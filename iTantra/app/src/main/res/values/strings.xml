@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">iTantra</string>
+    <string name="app_tagline">Offline Multilingual Voice Transceiver</string>
+    <string name="warning_offline_limitation">iTantra operates 100% offline without cellular internet, but requires a local physical communication link (Bluetooth, Wi-Fi Direct, or tactical radio) between devices to exchange messages.</string>
+</resources>

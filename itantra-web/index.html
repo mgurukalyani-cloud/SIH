@@ -1,0 +1,2340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iTantra - Offline Low-Bitrate Voice Transceiver Pipeline</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- PeerJS for real zero-config cross-device WebRTC DataChannel -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+  <style>
+    :root {
+      --bg-space: #060911;
+      --bg-card: rgba(12, 17, 30, 0.95);
+      --bg-chassis: #0f1526;
+      --bg-screen: #080c18;
+      --bg-input: rgba(16, 24, 42, 0.9);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-active: rgba(6, 182, 212, 0.4);
+      --border-green: rgba(16, 185, 129, 0.4);
+
+      --text-pure: #ffffff;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-faint: #64748b;
+
+      --accent-cyan: #06b6d4;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --accent-purple: #8b5cf6;
+
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-space);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(6, 182, 212, 0.07) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.07) 0%, transparent 45%),
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 40px 40px, 40px 40px;
+    }
+
+    /* =========================================================================
+       HEADER
+       ========================================================================= */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(8, 12, 22, 0.96);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 8px 20px;
+    }
+
+    .nav-container {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-symbol {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.3), rgba(16, 185, 129, 0.3));
+      border: 1px solid var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-cyan);
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+    }
+
+    .brand-name {
+      font-size: 1.45rem;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #38bdf8, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .badge-tag {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #38bdf8;
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
+
+    .brand-tagline {
+      font-size: 0.76rem;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .mode-pill-group {
+      display: flex;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+
+    .pill-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 11px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s ease;
+    }
+
+    .pill-btn:hover {
+      color: var(--text-pure);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .pill-btn.active {
+      background: var(--accent-cyan);
+      color: #04101e;
+      font-weight: 800;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+    }
+
+    .webrtc-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(16, 24, 42, 0.9);
+      border: 1px solid var(--border-subtle);
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+      animation: pulse-dot-anim 1.8s infinite;
+    }
+
+    @keyframes pulse-dot-anim {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(1.3); }
+    }
+
+    .pill-copy-btn {
+      background: rgba(6, 182, 212, 0.15);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      color: var(--accent-cyan);
+      padding: 2px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .pill-copy-btn:hover {
+      background: var(--accent-cyan);
+      color: #04101e;
+    }
+
+    .sos-btn {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: 1px solid #f87171;
+      color: #ffffff;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+      transition: all 0.2s ease;
+    }
+
+    .sos-btn:hover {
+      filter: brightness(1.15);
+    }
+
+    /* =========================================================================
+       STATS BAR
+       ========================================================================= */
+    .stats-bar {
+      background: rgba(10, 14, 25, 0.9);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 7px 20px;
+    }
+
+    .stats-container {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .stats-container::-webkit-scrollbar {
+      display: none;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      min-width: 120px;
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: var(--text-faint);
+      letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--text-pure);
+      white-space: nowrap;
+    }
+
+    .stat-separator {
+      width: 1px;
+      height: 22px;
+      background: var(--border-subtle);
+    }
+
+    .highlight-cyan { color: var(--accent-cyan) !important; }
+    .highlight-green { color: var(--accent-green) !important; }
+    .highlight-amber { color: var(--accent-amber) !important; }
+
+    /* =========================================================================
+       STAGE CONTAINER & 3-COLUMN LAYOUT
+       ========================================================================= */
+    .transceiver-stage {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 16px 20px 30px;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 360px minmax(360px, 1fr) 360px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    /* Viewport Display Rules */
+    body.layout-phone-a .transceiver-stage {
+      grid-template-columns: minmax(320px, 480px);
+      justify-content: center;
+    }
+    body.layout-phone-a #panelPipeline,
+    body.layout-phone-a #panelPhoneB {
+      display: none !important;
+    }
+
+    body.layout-phone-b .transceiver-stage {
+      grid-template-columns: minmax(320px, 480px);
+      justify-content: center;
+    }
+    body.layout-phone-b #panelPhoneA,
+    body.layout-phone-b #panelPipeline {
+      display: none !important;
+    }
+
+    /* =========================================================================
+       SMARTPHONE CHASSIS
+       ========================================================================= */
+    .phone-panel-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .device-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 4px;
+    }
+
+    .device-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-tx { color: var(--accent-cyan); }
+    .badge-rx { color: var(--accent-green); }
+
+    .device-carrier {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--text-faint);
+    }
+
+    .smartphone-chassis {
+      background: var(--bg-chassis);
+      border: 2px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 8px;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    }
+
+    .smartphone-bezel {
+      background: var(--bg-screen);
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      flex-direction: column;
+      height: 680px;
+    }
+
+    .screen-top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 14px;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.4);
+    }
+
+    .screen-speaker-ear {
+      width: 44px;
+      height: 4px;
+      background: #1e293b;
+      border-radius: 3px;
+    }
+
+    .app-banner {
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .tx-banner {
+      background: linear-gradient(90deg, rgba(6, 182, 212, 0.15), transparent);
+      border-left: 3px solid var(--accent-cyan);
+    }
+
+    .rx-banner {
+      background: linear-gradient(90deg, rgba(16, 185, 129, 0.15), transparent);
+      border-left: 3px solid var(--accent-green);
+    }
+
+    .app-title-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.88rem;
+      color: var(--text-pure);
+    }
+
+    .badge-offline-container {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .badge-offline {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+    }
+
+    .tooltip-icon {
+      font-size: 0.72rem;
+      color: var(--accent-cyan);
+      cursor: pointer;
+      position: relative;
+    }
+
+    .tooltip-bubble {
+      visibility: hidden;
+      opacity: 0;
+      position: absolute;
+      top: 130%;
+      right: 0;
+      width: 220px;
+      background: #0f172a;
+      border: 1px solid var(--accent-cyan);
+      color: var(--text-main);
+      padding: 8px;
+      border-radius: 6px;
+      font-size: 0.68rem;
+      line-height: 1.35;
+      z-index: 50;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.9);
+      transition: all 0.2s ease;
+      pointer-events: none;
+    }
+
+    .tooltip-icon:hover .tooltip-bubble {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .phone-scroll-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    }
+
+    .phone-scroll-content::-webkit-scrollbar {
+      width: 4px;
+    }
+    .phone-scroll-content::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .input-sublabel {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .styled-select {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.76rem;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .styled-select:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .pill-cloud {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .quick-pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .quick-pill:hover {
+      background: rgba(6, 182, 212, 0.12);
+      border-color: var(--accent-cyan);
+      color: var(--text-pure);
+    }
+
+    .quick-pill.active-pill {
+      border-color: rgba(6, 182, 212, 0.5);
+      background: rgba(6, 182, 212, 0.08);
+      color: var(--accent-cyan);
+    }
+
+    .stt-preview-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .stt-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .confidence-badge {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--accent-green);
+    }
+
+    .confidence-badge.low-conf {
+      color: var(--accent-amber);
+    }
+
+    .stt-transcript-area {
+      font-size: 0.78rem;
+      color: var(--text-main);
+      min-height: 32px;
+      line-height: 1.35;
+    }
+
+    .scope-card {
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 6px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .scope-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--text-faint);
+    }
+
+    .scope-rec-indicator {
+      font-weight: 800;
+      color: var(--accent-cyan);
+    }
+
+    .scope-canvas {
+      width: 100%;
+      height: 44px;
+      border-radius: 4px;
+      background: rgba(5, 8, 16, 0.7);
+    }
+
+    .manual-input-row {
+      display: flex;
+      gap: 5px;
+    }
+
+    .styled-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-pure);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      outline: none;
+    }
+
+    .styled-input:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    .styled-btn-primary {
+      background: var(--accent-cyan);
+      border: none;
+      color: #04101e;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .store-forward-card {
+      background: rgba(245, 158, 11, 0.05);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 8px;
+      padding: 7px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .sf-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--accent-amber);
+    }
+
+    .sf-counter {
+      background: rgba(245, 158, 11, 0.2);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    .sf-list {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      max-height: 70px;
+      overflow-y: auto;
+    }
+
+    .sf-empty-msg {
+      font-size: 0.68rem;
+      color: var(--text-faint);
+      font-style: italic;
+    }
+
+    .sf-item {
+      background: rgba(0, 0, 0, 0.4);
+      border-left: 2px solid var(--accent-amber);
+      padding: 3px 5px;
+      border-radius: 3px;
+      font-size: 0.68rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chat-feed-box {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 2px;
+    }
+
+    .chat-bubble {
+      max-width: 95%;
+      padding: 7px 10px;
+      border-radius: 10px;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .bubble-out {
+      align-self: flex-end;
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(6, 182, 212, 0.12));
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      border-bottom-right-radius: 2px;
+    }
+
+    .bubble-in {
+      align-self: flex-start;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.12));
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-bottom-left-radius: 2px;
+    }
+
+    .chat-text {
+      color: var(--text-pure);
+      font-weight: 500;
+    }
+
+    .chat-meta {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--text-muted);
+    }
+
+    .ptt-dock {
+      background: rgba(10, 14, 25, 0.96);
+      border-top: 1px solid var(--border-subtle);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .ptt-button {
+      width: 100%;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      border: 1px solid #f87171;
+      color: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.35);
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+
+    .ptt-button:active,
+    .ptt-button.transmitting {
+      background: linear-gradient(135deg, #10b981, #059669);
+      border-color: #34d399;
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.6);
+      transform: scale(0.98);
+    }
+
+    .ptt-hint {
+      font-size: 0.64rem;
+      color: var(--text-faint);
+      text-align: center;
+    }
+
+    /* RX Phone Specifics */
+    .rx-status-banner {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.64rem;
+      color: var(--accent-green);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .rx-packet-inspector {
+      background: rgba(0, 0, 0, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 7px 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .rx-packet-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .crc-badge {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--accent-green);
+    }
+
+    .hex-dump-box {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--accent-cyan);
+      background: rgba(0, 0, 0, 0.4);
+      padding: 5px 7px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    .rx-decoded-card {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .rx-decoded-hdr {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .lang-tag {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+
+    .rx-text-body {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #fff;
+      line-height: 1.35;
+    }
+
+    .rx-replay-button {
+      width: 100%;
+      background: linear-gradient(135deg, #10b981, #059669);
+      border: 1px solid #34d399;
+      color: #fff;
+      padding: 10px;
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+    }
+
+    /* =========================================================================
+       CENTRAL COLUMN: PIPELINE & TELEMETRY
+       ========================================================================= */
+    .pipeline-center-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .savings-spotlight-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-active);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6), 0 0 20px rgba(6, 182, 212, 0.2);
+    }
+
+    .spotlight-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+    }
+
+    .badge-saving-pill {
+      background: linear-gradient(135deg, var(--accent-green), #059669);
+      color: #04101e;
+      font-weight: 900;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 0.68rem;
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+    }
+
+    .side-by-side-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .side-card {
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .card-raw {
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      border-top: 3px solid var(--accent-red);
+    }
+
+    .card-text {
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      border-top: 3px solid var(--accent-cyan);
+    }
+
+    .side-card-title {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--text-muted);
+    }
+
+    .side-val-big {
+      font-family: var(--font-mono);
+      font-size: 1.35rem;
+      font-weight: 900;
+      color: var(--text-pure);
+    }
+
+    .side-detail {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .side-delay-val {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      margin-top: 3px;
+      color: var(--text-faint);
+    }
+
+    .reduction-banner {
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px dashed rgba(6, 182, 212, 0.4);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.74rem;
+      text-align: center;
+      color: var(--text-main);
+    }
+
+    .link-controls-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .link-row-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ctrl-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+    }
+
+    .ctrl-label {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .styled-select-compact {
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-pure);
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      font-family: var(--font-mono);
+      outline: none;
+      cursor: pointer;
+    }
+
+    .toggle-btn {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid var(--accent-green);
+      color: var(--accent-green);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .toggle-btn.state-unavailable {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+    }
+
+    .toggle-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .noise-sim-row {
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 6px;
+    }
+
+    .noise-toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .pipeline-diagram-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .pipeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 800;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 6px;
+    }
+
+    .stage-activity-badge {
+      font-size: 0.62rem;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .pipeline-stages-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .p-stage {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(14, 20, 35, 0.65);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 6px 10px;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stage-num {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      color: var(--text-faint);
+      min-width: 18px;
+    }
+
+    .stage-icon {
+      font-size: 0.95rem;
+    }
+
+    .stage-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .stage-name {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .stage-desc {
+      font-size: 0.64rem;
+      color: var(--text-faint);
+    }
+
+    .stage-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      transition: all 0.2s ease;
+    }
+
+    /* Lighting Stages */
+    .p-stage.active-stage {
+      background: linear-gradient(90deg, rgba(6, 182, 212, 0.25), rgba(16, 185, 129, 0.2));
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 14px rgba(6, 182, 212, 0.4);
+      transform: translateX(3px);
+    }
+
+    .p-stage.active-stage .stage-name {
+      color: #fff;
+      font-weight: 800;
+    }
+
+    .p-stage.active-stage .stage-status-dot {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+      transform: scale(1.4);
+    }
+
+    .p-stage.warning-stage {
+      border-color: var(--accent-amber);
+      background: rgba(245, 158, 11, 0.15);
+    }
+
+    .stage-channel {
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      background: rgba(6, 182, 212, 0.05);
+    }
+
+    .packet-progress-bar-wrap {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .packet-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-green));
+      box-shadow: 0 0 8px var(--accent-cyan);
+    }
+
+    .pipeline-arrow {
+      text-align: center;
+      font-size: 0.6rem;
+      color: var(--text-faint);
+      line-height: 1;
+    }
+
+    .highlight-link-arrow {
+      font-family: var(--font-mono);
+      font-weight: 800;
+      color: var(--accent-cyan);
+      letter-spacing: 0.5px;
+      padding: 1px 0;
+    }
+
+    /* =========================================================================
+       DECK MODAL
+       ========================================================================= */
+    .deck-modal-view {
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: rgba(4, 7, 15, 0.95);
+      backdrop-filter: blur(20px);
+      padding: 30px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .deck-container {
+      max-width: 900px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .slide-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-active);
+      border-radius: 20px;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 25px rgba(6, 182, 212, 0.25);
+    }
+
+    .slide-badge-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .slide-badge {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.15);
+      padding: 3px 8px;
+      border-radius: 5px;
+    }
+
+    .close-deck-btn {
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+
+    .slide-heading {
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: #fff;
+    }
+
+    .slide-body-text {
+      font-size: 0.98rem;
+      color: var(--text-main);
+      line-height: 1.55;
+    }
+
+    .slide-bullet-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .slide-point {
+      display: flex;
+      gap: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      padding: 12px 14px;
+      border-radius: 10px;
+    }
+
+    .slide-point-tag {
+      font-family: var(--font-mono);
+      font-weight: 800;
+      color: var(--accent-cyan);
+      min-width: 130px;
+      font-size: 0.8rem;
+    }
+
+    .slide-point-desc {
+      font-size: 0.9rem;
+      color: #f1f5f9;
+    }
+
+    .slide-nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .slide-nav-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-pure);
+      padding: 8px 16px;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .slide-counter-label {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* SOS Strobe Alert */
+    body.sos-strobe {
+      animation: strobe-background 1.5s infinite;
+    }
+
+    @keyframes strobe-background {
+      0%, 100% { background-color: var(--bg-space); }
+      50% { background-color: #1a0808; }
+    }
+
+    /* =========================================================================
+       DAYLIGHT HIGH-CONTRAST THEME
+       ========================================================================= */
+    body.theme-light {
+      --bg-space: #f1f5f9;
+      --bg-panel: #ffffff;
+      --bg-card: #ffffff;
+      --bg-chassis: #cbd5e1;
+      --bg-screen: #f8fafc;
+      --bg-input: #ffffff;
+      --border-subtle: rgba(0, 0, 0, 0.14);
+      --border-active: #0284c7;
+      --border-green: #059669;
+      --text-pure: #0f172a;
+      --text-main: #1e293b;
+      --text-muted: #475569;
+      --text-faint: #64748b;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(6, 182, 212, 0.12) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.12) 0%, transparent 45%),
+        linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+    }
+    body.theme-light header {
+      background: rgba(255, 255, 255, 0.94);
+      border-bottom-color: rgba(0, 0, 0, 0.12);
+    }
+    body.theme-light .stats-bar {
+      background: rgba(241, 245, 249, 0.95);
+      border-bottom-color: rgba(0, 0, 0, 0.12);
+    }
+    body.theme-light .smartphone-chassis {
+      background: #cbd5e1;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    }
+    body.theme-light .smartphone-bezel {
+      background: #f8fafc;
+    }
+    body.theme-light .chat-feed-box {
+      background: #f1f5f9;
+    }
+    body.theme-light .bubble-out {
+      background: #e0f2fe;
+      border-color: #7dd3fc;
+      color: #0369a1;
+    }
+    body.theme-light .bubble-in {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #15803d;
+    }
+    body.theme-light .chat-bubble .chat-text {
+      color: #0f172a;
+    }
+
+    /* Theme Toggle Button */
+    .theme-toggle-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.2s;
+    }
+    .theme-toggle-btn:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-pure);
+    }
+
+    /* Real-Time GPS Live Pill */
+    .gps-live-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-main);
+    }
+    .gps-radar-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+      animation: pulse-dot-anim 1.6s infinite;
+    }
+    .gps-label {
+      font-weight: 800;
+      color: var(--accent-cyan);
+    }
+    .gps-coords {
+      font-weight: 700;
+      color: var(--text-pure);
+      letter-spacing: -0.2px;
+    }
+    .gps-acc {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* Press-and-Hold Protected SOS Button */
+    .sos-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    .sos-btn {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, #991b1b, #7f1d1d);
+      border: 1px solid #ef4444;
+      color: #ffffff;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.4);
+      user-select: none;
+      -webkit-user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.1s;
+    }
+    .sos-btn:active {
+      transform: scale(0.98);
+    }
+    .sos-progress-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0%;
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      transition: width 0.05s linear;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .sos-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .sos-btn.active-sos {
+      background: #dc2626;
+      animation: pulse-sos 0.8s infinite alternate;
+    }
+    @keyframes pulse-sos {
+      from { box-shadow: 0 0 15px #ef4444; }
+      to { box-shadow: 0 0 30px #ef4444, 0 0 45px rgba(239, 68, 68, 0.8); }
+    }
+    .sos-state-chip {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 800;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+    }
+    .sos-state-chip.loc-acquired {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--accent-green);
+    }
+    .sos-state-chip.acknowledged {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: rgba(56, 189, 248, 0.6);
+      color: #38bdf8;
+    }
+
+    /* Phone A Chassis Live GPS Bar */
+    .phone-gps-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 4px 8px;
+      margin-bottom: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+    .phone-gps-bar strong {
+      color: var(--accent-cyan);
+    }
+
+    /* Secondary Buttons and Action Rows */
+    .styled-btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .styled-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.16);
+      color: var(--text-pure);
+    }
+    .stt-actions-row {
+      display: flex;
+      gap: 6px;
+    }
+
+    /* Delivery Status Badges in Chat Log */
+    .ack-status-tag {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 3px;
+      display: inline-block;
+      margin-top: 2px;
+    }
+    .ack-status-tag.sent {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: var(--accent-amber);
+    }
+    .ack-status-tag.acked {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.6);
+      color: var(--accent-green);
+    }
+    .ack-status-tag.queued {
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      color: var(--text-muted);
+    }
+
+    /* 4-Tier Transmission Priority Levels */
+    .priority-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 5px 3px;
+      border-radius: 6px;
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .priority-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+    .priority-btn.active[data-priority="NORMAL"] {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: #10b981;
+      color: #10b981;
+    }
+    .priority-btn.active[data-priority="WARNING"] {
+      background: rgba(245, 158, 11, 0.2);
+      border-color: #f59e0b;
+      color: #f59e0b;
+    }
+    .priority-btn.active[data-priority="ALERT"] {
+      background: rgba(249, 115, 22, 0.2);
+      border-color: #f97316;
+      color: #f97316;
+    }
+    .priority-btn.active[data-priority="CRITICAL"] {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #ef4444;
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+    }
+  </style>
+</head>
+<body class="theme-dark layout-split">
+
+  <!-- =========================================================================
+       TOP HEADER
+       ========================================================================= -->
+  <header>
+    <div class="nav-container">
+      <div class="brand-block">
+        <div class="brand-symbol">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"/>
+            <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"/>
+            <circle cx="12" cy="12" r="2.5"/>
+            <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"/>
+            <path d="M19.1 4.9C23 8.8 23 15.2 19.1 19.1"/>
+          </svg>
+        </div>
+        <div>
+          <div style="display:flex; align-items:center;">
+            <span class="brand-name">iTantra</span>
+            <span class="badge-tag">ISRO / NDMA TACTICAL PIPELINE</span>
+          </div>
+          <p class="brand-tagline">Voice-like communication over constrained links (Speech → STT → Text → Link → TTS → Speech)</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Viewport Switcher -->
+        <div class="mode-pill-group">
+          <button class="pill-btn active" id="viewSplitBtn">Dual Phone (Demo)</button>
+          <button class="pill-btn" id="viewPhoneABtn">Phone A (Sender)</button>
+          <button class="pill-btn" id="viewPhoneBBtn">Phone B (Receiver)</button>
+          <button class="pill-btn" id="viewDeckBtn">Pitch Deck</button>
+        </div>
+
+        <!-- Daylight High-Contrast Theme Toggle -->
+        <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle Daylight High-Contrast Mode">🌓 Daylight</button>
+
+        <!-- Real-Time GPS Sensor Lock Badge -->
+        <div class="gps-live-pill" id="liveGpsBadge" title="Real-Time GPS Location Stream">
+          <span class="gps-radar-dot"></span>
+          <span class="gps-label">GPS:</span>
+          <span class="gps-coords" id="hdrGpsCoords">17.38504° N, 78.48667° E</span>
+          <span class="gps-acc" id="hdrGpsAcc">±4m</span>
+        </div>
+
+        <!-- Cross-Device WebRTC Pairing -->
+        <div class="webrtc-pill">
+          <span class="pulse-dot" id="peerDot"></span>
+          <span id="peerStatusLabel">Mesh: Standby</span>
+          <button class="pill-copy-btn" id="copyPairUrlBtn">Pair Phone 2</button>
+        </div>
+
+        <!-- Press-and-Hold Protected SOS Button -->
+        <div class="sos-wrapper" id="sosWrapper">
+          <button class="sos-btn" id="sosBtn" title="Press and HOLD for 2.0s to broadcast emergency SOS">
+            <span class="sos-progress-fill" id="sosProgressFill"></span>
+            <span class="sos-content">
+              <span>🚨</span>
+              <span id="sosBtnText">HOLD 2S FOR SOS</span>
+            </span>
+          </button>
+          <div class="sos-state-chip" id="sosStateChip">READY</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       TELEMETRY STATS BAR
+       ========================================================================= -->
+  <aside class="stats-bar">
+    <div class="stats-container">
+      <div class="stat-item">
+        <span class="stat-label">TOTAL MESSAGES</span>
+        <span class="stat-value" id="statMsgCount">0</span>
+      </div>
+      <div class="stat-separator"></div>
+      <div class="stat-item">
+        <span class="stat-label">AVG TEXT PAYLOAD</span>
+        <span class="stat-value highlight-cyan" id="statAvgPayload">42 B</span>
+      </div>
+      <div class="stat-separator"></div>
+      <div class="stat-item">
+        <span class="stat-label">RAW AUDIO PROCESSED</span>
+        <span class="stat-value" id="statRawAudioTotal">0.0 KB</span>
+      </div>
+      <div class="stat-separator"></div>
+      <div class="stat-item">
+        <span class="stat-label">CUMULATIVE DATA SAVED</span>
+        <span class="stat-value highlight-green" id="statDataSavedPct">99.8% (0 KB saved)</span>
+      </div>
+      <div class="stat-separator"></div>
+      <div class="stat-item">
+        <span class="stat-label">LINK SPEED</span>
+        <span class="stat-value highlight-amber" id="statActiveBitrate">1.2 kbps (LoRa)</span>
+      </div>
+      <div class="stat-separator"></div>
+      <div class="stat-item">
+        <span class="stat-label">STORE & FORWARD QUEUE</span>
+        <span class="stat-value" id="statQueueCount">0 Queued</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- =========================================================================
+       MAIN PRESENTATION STAGE: SPLIT-SCREEN PHONES & CENTRAL PIPELINE
+       ========================================================================= -->
+  <main class="transceiver-stage" id="transceiverMain">
+
+    <!-- -----------------------------------------------------------------------
+         PHONE A (SENDER - NODE ALPHA)
+         ----------------------------------------------------------------------- -->
+    <div class="phone-panel-wrapper" id="panelPhoneA">
+      <div class="device-label-row">
+        <span class="device-tag badge-tx">PHONE A // SENDER NODE (ALPHA)</span>
+        <span class="device-carrier">DISASTER AD-HOC MESH</span>
+      </div>
+
+      <div class="smartphone-chassis">
+        <div class="smartphone-bezel">
+          <!-- Top Bar -->
+          <div class="screen-top-bar">
+            <span>09:41</span>
+            <div class="screen-speaker-ear"></div>
+            <span>🔋 88% | WAN: OFFLINE | AD-HOC: OK</span>
+          </div>
+
+          <!-- App Nav Bar -->
+          <div class="app-banner tx-banner">
+            <div class="app-title-group">
+              <span>📡</span>
+              <strong>iTantra TX</strong>
+            </div>
+            <div class="badge-offline-container">
+              <span class="badge-offline">OFFLINE STT</span>
+              <span class="tooltip-icon">ⓘ
+                <span class="tooltip-bubble">100% On-device acoustic & STT inference running locally with zero cloud or internet connectivity.</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Live Tactical GPS Status Bar inside Phone -->
+          <div class="phone-gps-bar" id="phoneAGpsBar">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span class="pulse-dot"></span>
+              <span>📍 GPS: <strong id="phoneAGpsCoords">17.38504° N, 78.48667° E</strong></span>
+            </div>
+            <span id="phoneAGpsMeta" style="color:var(--accent-cyan); font-weight:700;">±4m (Locked)</span>
+          </div>
+
+          <!-- Phone Content -->
+          <div class="phone-scroll-content">
+            <!-- Operational Mode Switcher (PTT vs Phone Mode) -->
+            <div class="control-row">
+              <label class="input-sublabel">COMMUNICATION MODE:</label>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="styled-btn-primary" id="btnModePtt" style="flex:1; padding:6px; font-size:0.7rem;">📻 Walkie-Talkie (PTT)</button>
+                <button type="button" class="styled-btn-secondary" id="btnModePhone" style="flex:1; padding:6px; font-size:0.7rem;">📞 Phone Mode (Duplex)</button>
+              </div>
+              <div id="phoneModeActiveBar" style="display:none; margin-top:5px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); border-radius:6px; padding:4px 8px; font-size:0.65rem; color:#10b981; display:none; justify-content:space-between; align-items:center;">
+                <span>● HANDS-FREE PHONE CHANNEL ACTIVE</span>
+                <button type="button" id="btnEndPhoneCall" style="background:#dc2626; color:#fff; border:none; padding:2px 6px; border-radius:4px; font-size:0.62rem; cursor:pointer;">End Call</button>
+              </div>
+            </div>
+
+            <!-- Language Selector (10 Indian Languages + Neural Auto-Detect LID) -->
+            <div class="control-row">
+              <label for="phoneLangSelect" class="input-sublabel">SPOKEN LANGUAGE (10 INDIAN LANGUAGES):</label>
+              <select id="phoneLangSelect" class="styled-select">
+                <option value="auto">🌐 Auto-Detect Language (Neural LID)</option>
+                <option value="te-IN" selected>Telugu (తెలుగు) - Kathbath INT8</option>
+                <option value="hi-IN">Hindi (हिंदी) - Kathbath INT8</option>
+                <option value="gu-IN">Gujarati (ગુજરાતી) - IndicASR INT8</option>
+                <option value="mr-IN">Marathi (मराठी) - IndicASR INT8</option>
+                <option value="kn-IN">Kannada (ಕನ್ನಡ) - IndicVoices INT8</option>
+                <option value="ml-IN">Malayalam (മലയാളം) - IndicVoices INT8</option>
+                <option value="ta-IN">Tamil (தமிழ்) - IndicVoices INT8</option>
+                <option value="or-IN">Odia (ଓଡ଼ିଆ) - IndicASR INT8</option>
+                <option value="bn-IN">Bengali (বাংলা) - IndicASR INT8</option>
+                <option value="en-IN">Indian English - Conformer INT8</option>
+              </select>
+            </div>
+
+            <!-- Transmission Priority Level Selector (4 Levels) -->
+            <div class="control-row">
+              <label class="input-sublabel">TRANSMISSION PRIORITY LEVEL (4 TIERS):</label>
+              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 4px;" id="priorityLevelGrid">
+                <button type="button" class="priority-btn active" data-priority="NORMAL">🟢 Normal</button>
+                <button type="button" class="priority-btn" data-priority="WARNING">🟡 Warning</button>
+                <button type="button" class="priority-btn" data-priority="ALERT">🟠 Alert</button>
+                <button type="button" class="priority-btn" data-priority="CRITICAL">🔴 SOS</button>
+              </div>
+            </div>
+
+            <!-- Offline Translation Target Selector -->
+            <div class="control-row">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label for="phoneTargetLangSelect" class="input-sublabel">TRANSLATE TO (OFFLINE MATRIX):</label>
+                <label style="font-size:0.65rem; color:var(--accent-cyan); display:flex; align-items:center; gap:3px;">
+                  <input type="checkbox" id="enableTranslationCheck" checked> Enable
+                </label>
+              </div>
+              <select id="phoneTargetLangSelect" class="styled-select">
+                <option value="hi-IN" selected>Hindi (हिंदी) - Receiver Output</option>
+                <option value="te-IN">Telugu (తెలుగు) - Receiver Output</option>
+                <option value="en-IN">Indian English - Receiver Output</option>
+                <option value="ta-IN">Tamil (தமிழ்) - Receiver Output</option>
+                <option value="kn-IN">Kannada (ಕನ್ನಡ) - Receiver Output</option>
+                <option value="mr-IN">Marathi (मराठी) - Receiver Output</option>
+                <option value="gu-IN">Gujarati (ગુજરાતી) - Receiver Output</option>
+                <option value="ml-IN">Malayalam (മലയാളം) - Receiver Output</option>
+                <option value="bn-IN">Bengali (বাংলা) - Receiver Output</option>
+                <option value="or-IN">Odia (ଓଡ଼ିଆ) - Receiver Output</option>
+              </select>
+            </div>
+
+            <!-- Emergency Alert Presets (6 Disaster Types) -->
+            <div class="control-row">
+              <span class="input-sublabel">EMERGENCY DISASTER ADVISORIES (6 ALERTS):</span>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px;" id="emergencyAlertGrid">
+                <button type="button" class="quick-pill alert-pill-flood" data-alert="FLOOD" data-text="వరద నీరు పెరుగుతోంది, సహాయం కావాలి">🌊 Flood Alert</button>
+                <button type="button" class="quick-pill alert-pill-fire" data-alert="FIRE" data-text="తీవ్ర అగ్ని ప్రమాదం సంభవించింది, రక్షించండి">🔥 Fire Alert</button>
+                <button type="button" class="quick-pill alert-pill-quake" data-alert="EARTHQUAKE" data-text="భూకంపం సంభవించింది, భవనం కూలిపోయింది">🏚️ Earthquake</button>
+                <button type="button" class="quick-pill alert-pill-med" data-alert="MEDICAL" data-text="వైద్య సహాయం తక్షణమే పంపండి">🚑 Medical Alert</button>
+                <button type="button" class="quick-pill alert-pill-sec" data-alert="SECURITY" data-text="భద్రతా ముప్పు ఉంది, సురక్షిత ప్రాంతానికి వెళ్లండి">⚠️ Security Threat</button>
+                <button type="button" class="quick-pill alert-pill-evac" data-alert="EVACUATION" data-text="తక్షణమే ఖాళీ చేయాలనే ఉత్తర్వులు జారీ చేయబడ్డాయి">🚨 Evacuation Order</button>
+              </div>
+            </div>
+
+            <!-- Demo Quick Phrases Pills (Covering All 10 Indian Languages) -->
+            <div class="control-row">
+              <span class="input-sublabel">QUICK PHRASES (10 INDIAN LANGUAGES TEST):</span>
+              <div class="pill-cloud" id="quickPills">
+                <button class="quick-pill active-pill" data-lang="te-IN" data-text="వరద నీరు పెరుగుతోంది, సహాయం కావాలి">
+                  🚨 [TE] "వరద నీరు పెరుగుతోంది, సహాయం కావాలి"
+                </button>
+                <button class="quick-pill" data-lang="hi-IN" data-text="बाढ़ का पानी बढ़ रहा है, तुरंत नाव भेजें">
+                  🚤 [HI] "बाढ़ का पानी बढ़ रहा है, तुरंत नाव भेजें"
+                </button>
+                <button class="quick-pill" data-lang="ta-IN" data-text="உடனடியாக மருத்துவ உதவி தேவை">
+                  🚑 [TA] "உடனடியாக மருத்துவ உதவி தேவை"
+                </button>
+                <button class="quick-pill" data-lang="kn-IN" data-text="ತುರ್ತು ವೈದ್ಯಕೀಯ ನೆರವು ಬೇಕಾಗಿದೆ">
+                  🏥 [KN] "ತುರ್ತು ವೈದ್ಯಕೀಯ ನೆರವು ಬೇಕಾಗಿದೆ"
+                </button>
+                <button class="quick-pill" data-lang="mr-IN" data-text="पुराचे पाणी वाढत आहे, त्वरित मदत पाठवा">
+                  🌊 [MR] "पुराचे पाणी वाढत आहे, मदत पाठवा"
+                </button>
+                <button class="quick-pill" data-lang="gu-IN" data-text="પૂરનું પાણી વધી રહ્યું છે, તાત્કાલિક હોડી મોકલો">
+                  ⛵ [GU] "પૂરનું પાણી વધી રહ્યું છે, હોડી મોકલો"
+                </button>
+                <button class="quick-pill" data-lang="ml-IN" data-text="വെള്ളപ്പൊക്കം കൂടുന്നു, ഉടൻ സഹായം വേണം">
+                  🆘 [ML] "വെള്ളപ്പൊക്കം കൂടുന്നു, സഹായം വേണം"
+                </button>
+                <button class="quick-pill" data-lang="bn-IN" data-text="আশ্রয়কেন্দ্রে খাবার জল প্রয়োজন">
+                  💧 [BN] "আশ্রয়কেন্দ্রে খাবার জল প্রয়োজন"
+                </button>
+                <button class="quick-pill" data-lang="or-IN" data-text="ବନ୍ୟା ଜଳ ବଢୁଛି, ତୁରନ୍ତ ସାହାଯ୍ୟ ଦରକାର">
+                  🌧️ [OR] "ବନ୍ୟା ଜଳ ବଢୁଛି, ସାହାଯ୍ୟ ଦରକାର"
+                </button>
+                <button class="quick-pill" data-lang="en-IN" data-text="Bridge collapsed at sector 4, need evacuation team">
+                  🏗️ [EN] "Bridge collapsed, need evacuation"
+                </button>
+              </div>
+            </div>
+
+            <!-- Recognized Speech Box -->
+            <div class="stt-preview-box">
+              <div class="stt-preview-header">
+                <span class="input-sublabel">RECOGNIZED SPEECH (OFFLINE STT):</span>
+                <span class="confidence-badge" id="confidenceBadge">Conf: 98%</span>
+              </div>
+              <div class="stt-transcript-area" id="sttRecognizedBox">
+                Press and HOLD the button below and speak into your microphone, or pick a preset above.
+              </div>
+              <!-- Action Bar for Text Preview, Confirmation, Retry & Manual Edit -->
+              <div class="stt-actions-row" id="sttActionsRow" style="display:none; margin-top:8px;">
+                <button class="styled-btn-primary" id="btnConfirmSend" style="flex:1.5;">Confirm & Transmit →</button>
+                <button class="styled-btn-secondary" id="btnRetrySpeech" style="flex:1;">↺ Retake</button>
+                <button class="styled-btn-secondary" id="btnEditManual" style="flex:1;">⌨ Edit</button>
+              </div>
+            </div>
+
+            <!-- Live Oscilloscope -->
+            <div class="scope-card">
+              <div class="scope-header">
+                <span>PCM AUDIO WAVEFORM (16 kHz VAD GATE)</span>
+                <span class="scope-rec-indicator" id="recPulseIndicator">READY</span>
+              </div>
+              <canvas id="txScopeCanvas" class="scope-canvas" width="320" height="44"></canvas>
+            </div>
+
+            <!-- Manual Text Fallback Input -->
+            <div class="manual-input-row">
+              <input type="text" id="manualTextInput" placeholder="లేదా ఇక్కడ టైప్ చేసి పంపండి..." class="styled-input">
+              <button id="sendManualBtn" class="styled-btn-primary">Send</button>
+            </div>
+
+            <!-- Store & Forward Queue Display -->
+            <div class="store-forward-card">
+              <div class="sf-header">
+                <span>📦 STORE & FORWARD QUEUE</span>
+                <span class="sf-counter" id="sfQueueBadge">0 Queued</span>
+              </div>
+              <div class="sf-list" id="sfQueueList">
+                <div class="sf-empty-msg">Queue empty. Messages queue automatically when link is unavailable.</div>
+              </div>
+            </div>
+
+            <!-- Sender Transcript Feed -->
+            <div class="chat-feed-box" id="txChatLog">
+              <div class="chat-bubble bubble-out">
+                <div class="chat-text">సిస్టమ్ సిద్ధంగా ఉంది. బటన్ నొక్కి మాట్లాడండి.</div>
+                <div class="chat-meta">
+                  <span>System Standby</span>
+                  <span>0 Bytes</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- PUSH-TO-TALK BUTTON -->
+          <div class="ptt-dock">
+            <button class="ptt-button" id="pttBtn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+              <span id="pttLabel">HOLD TO TALK (iTantra PTT)</span>
+            </button>
+            <div class="ptt-hint">Hold down while speaking. Release to transmit.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- -----------------------------------------------------------------------
+         CENTRAL COLUMN: 10-STAGE PIPELINE & LOW-BITRATE LINK SIMULATOR
+         ----------------------------------------------------------------------- -->
+    <div class="pipeline-center-wrapper" id="panelPipeline">
+      
+      <!-- Live Savings Comparison Spotlight -->
+      <div class="savings-spotlight-card">
+        <div class="spotlight-title">
+          <span>⚡ LIVE BANDWIDTH & LINK TELEMETRY</span>
+          <span class="badge-saving-pill" id="liveSavingsRatioBadge">99.8% LESS DATA</span>
+        </div>
+
+        <div class="side-by-side-grid">
+          <!-- Card A: Raw Audio -->
+          <div class="side-card card-raw">
+            <div class="side-card-title">RAW AUDIO (16kHz 16-bit)</div>
+            <div class="side-val-big" id="sideRawBytes">96.0 KB</div>
+            <div class="side-detail" id="sideRawDetail">3.0s speech @ 32 KB/s</div>
+            <div class="side-delay-val" id="sideRawTime">At 1.2 kbps: <strong>640.0s (10.7 min)</strong> ⚠️ UNFEASIBLE</div>
+          </div>
+
+          <!-- Card B: iTantra Text -->
+          <div class="side-card card-text">
+            <div class="side-card-title">iTANTRA ENCODED TEXT</div>
+            <div class="side-val-big highlight-cyan" id="sideTextBytes">54 Bytes</div>
+            <div class="side-detail" id="sideTextDetail">38B UTF-8 + 16B Frame Header</div>
+            <div class="side-delay-val highlight-green" id="sideTextTime">At 1.2 kbps: <strong>0.36s</strong> ✅ INSTANT</div>
+          </div>
+        </div>
+
+        <div class="reduction-banner" id="reductionBanner">
+          🎯 <strong>1,777x Less Bandwidth</strong> — Voice transmitted over constrained disaster link!
+        </div>
+      </div>
+
+      <!-- Link Simulation & Tri-Channel Controls -->
+      <div class="link-controls-card">
+        <!-- Physical Channel Selector -->
+        <div class="ctrl-group" style="margin-bottom:6px;">
+          <label class="ctrl-label" for="channelInterfaceSelect">PHYSICAL RADIO INTERFACE (TRI-CHANNEL MESH):</label>
+          <select id="channelInterfaceSelect" class="styled-select-compact" style="width:100%; font-size:0.75rem;">
+            <option value="lora" selected>📡 LoRa SX1278 (433.175 MHz / SF10 / Long-Range 5–15 km)</option>
+            <option value="ble">📻 Bluetooth LE 5.0 Coded PHY (S=8 / 120m through rubble)</option>
+            <option value="wifidirect">📶 Wi-Fi Direct P2P (High-Throughput Local Socket)</option>
+          </select>
+        </div>
+
+        <!-- Live LoRa RF Telemetry Strip -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.4); border:1px solid var(--border-subtle); padding:4px 8px; border-radius:6px; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-muted);" id="loraRfTelemetryBox">
+          <span>FREQ: <strong style="color:var(--accent-cyan);">433.175 MHz</strong></span>
+          <span>SF: <strong style="color:var(--accent-cyan);">SF10</strong></span>
+          <span>RSSI: <strong id="telemetryRssi" style="color:var(--accent-green);">-92 dBm</strong></span>
+          <span>SNR: <strong id="telemetrySnr" style="color:var(--accent-green);">+7.5 dB</strong></span>
+        </div>
+
+        <!-- ESP32 Hardware Bridge & Multi-Hop Mesh Strip -->
+        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.3); border:1px solid var(--border-subtle); padding:4px 8px; border-radius:6px; font-family:var(--font-mono); font-size:0.63rem; color:var(--text-muted); margin-top:4px;" id="meshAndSerialTelemetryBox">
+          <span>ESP32 OTG: <strong style="color:var(--accent-green);" id="esp32Status">USB-CDC (COM4 @ 115200)</strong></span>
+          <span>MESH HOPS: <strong style="color:var(--accent-cyan);" id="meshHopsText">2 Hops (Relay-04)</strong></span>
+          <span>TTL: <strong style="color:var(--accent-amber);" id="meshTtlText">7 / 8</strong></span>
+        </div>
+
+        <div class="link-row-flex" style="margin-top:6px;">
+          <div class="ctrl-group">
+            <label class="ctrl-label" for="linkSpeedSelect">SIMULATED LINK BITRATE:</label>
+            <select id="linkSpeedSelect" class="styled-select-compact">
+              <option value="300">300 bps (HF Emergency / Bell 103)</option>
+              <option value="1200" selected>1.2 kbps (LoRa / VHF Tactical)</option>
+              <option value="9600">9.6 kbps (Satellite / BLE Coded PHY)</option>
+            </select>
+          </div>
+
+          <div class="ctrl-group">
+            <span class="ctrl-label">LINK STATUS (STORE & FORWARD):</span>
+            <div style="display:flex;">
+              <button class="toggle-btn state-available" id="linkToggleBtn">
+                <span class="toggle-dot"></span>
+                <span id="linkStatusText">🟢 AVAILABLE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Security & Noise Suppression Toggles -->
+        <div class="noise-sim-row" style="display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label class="noise-toggle-label">
+              <input type="checkbox" id="noiseSimCheckbox">
+              <span>Simulate Disaster Noise (Rubble / Flood)</span>
+            </label>
+            <span style="font-family:var(--font-mono); font-size:0.62rem; color:var(--accent-green); background:rgba(16,185,129,0.15); padding:2px 6px; border-radius:4px;">
+              🔒 AES-256-GCM SECURED
+            </span>
+          </div>
+          <label class="noise-toggle-label">
+            <input type="checkbox" id="dspNoiseSuppressorCheckbox" checked>
+            <span>Enable DSP Noise Suppressor (300Hz-3400Hz Bandpass + VAD Gate)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 10-STAGE VERTICAL PIPELINE -->
+      <div class="pipeline-diagram-box">
+        <div class="pipeline-header">
+          <span>END-TO-END PIPELINE STAGE MONITOR</span>
+          <span class="stage-activity-badge" id="pipelineActivityLabel">PIPELINE IDLE</span>
+        </div>
+
+        <div class="pipeline-stages-flow" id="pipelineFlow">
+          <!-- Stage 1 -->
+          <div class="p-stage" id="stage-1">
+            <div class="stage-num">01</div>
+            <div class="stage-icon">🎤</div>
+            <div class="stage-body">
+              <div class="stage-name">Audio Ingress (16 kHz PCM)</div>
+              <div class="stage-desc">Microphone capture & frame buffering</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 2 -->
+          <div class="p-stage" id="stage-2">
+            <div class="stage-num">02</div>
+            <div class="stage-icon">🧠</div>
+            <div class="stage-body">
+              <div class="stage-name">Offline STT (Conformer-CTC)</div>
+              <div class="stage-desc">Phonetic tokenization on-device</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 3 -->
+          <div class="p-stage" id="stage-3">
+            <div class="stage-num">03</div>
+            <div class="stage-icon">🛡️</div>
+            <div class="stage-body">
+              <div class="stage-name">Sentence Validation & VAD</div>
+              <div class="stage-desc">Syntax verification & noise rejection</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 4 -->
+          <div class="p-stage" id="stage-4">
+            <div class="stage-num">04</div>
+            <div class="stage-icon">📦</div>
+            <div class="stage-body">
+              <div class="stage-name">Encode / Frame Compression</div>
+              <div class="stage-desc">UTF-8 packing + 16B iMFP binary header</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 5 -->
+          <div class="p-stage" id="stage-5">
+            <div class="stage-num">05</div>
+            <div class="stage-icon">📡</div>
+            <div class="stage-body">
+              <div class="stage-name">TX Comm Interface</div>
+              <div class="stage-desc">BLE 5.0 Coded PHY / LoRa radio framing</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow highlight-link-arrow">↓ [CONSTRAINED LINK] ↓</div>
+
+          <!-- Stage 6: The Link -->
+          <div class="p-stage stage-channel" id="stage-6">
+            <div class="stage-num">06</div>
+            <div class="stage-icon">⚡</div>
+            <div class="stage-body">
+              <div class="stage-name">Low-Bitrate Channel Propagation</div>
+              <div class="stage-desc" id="linkThrottleDesc">Throttled transfer @ 1.2 kbps</div>
+            </div>
+            <div class="packet-progress-bar-wrap">
+              <div class="packet-progress-bar" id="packetProgressBar"></div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 7 -->
+          <div class="p-stage" id="stage-7">
+            <div class="stage-num">07</div>
+            <div class="stage-icon">📥</div>
+            <div class="stage-body">
+              <div class="stage-name">RX Comm Interface</div>
+              <div class="stage-desc">Ingress buffer & RF preamble sync</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 8 -->
+          <div class="p-stage" id="stage-8">
+            <div class="stage-num">08</div>
+            <div class="stage-icon">🔓</div>
+            <div class="stage-body">
+              <div class="stage-name">Decode & CRC-16 Checksum</div>
+              <div class="stage-desc">De-framing & byte payload extraction</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 9 -->
+          <div class="p-stage" id="stage-9">
+            <div class="stage-num">09</div>
+            <div class="stage-icon">🗣️</div>
+            <div class="stage-body">
+              <div class="stage-name">Offline TTS Vocoder (VITS)</div>
+              <div class="stage-desc">Neural speech synthesis on receiver</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+          <div class="pipeline-arrow">↓</div>
+
+          <!-- Stage 10 -->
+          <div class="p-stage" id="stage-10">
+            <div class="stage-num">10</div>
+            <div class="stage-icon">🔊</div>
+            <div class="stage-body">
+              <div class="stage-name">Speaker Audio Reconstruction</div>
+              <div class="stage-desc">Audible speech played out loud</div>
+            </div>
+            <div class="stage-status-dot"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- -----------------------------------------------------------------------
+         PHONE B (RECEIVER - NODE BRAVO)
+         ----------------------------------------------------------------------- -->
+    <div class="phone-panel-wrapper" id="panelPhoneB">
+      <div class="device-label-row">
+        <span class="device-tag badge-rx">PHONE B // RECEIVER NODE (BRAVO)</span>
+        <span class="device-carrier">DISASTER AD-HOC MESH</span>
+      </div>
+
+      <div class="smartphone-chassis">
+        <div class="smartphone-bezel">
+          <!-- Top Bar -->
+          <div class="screen-top-bar">
+            <span>09:41</span>
+            <div class="screen-speaker-ear"></div>
+            <span>🔋 94% | No SIM</span>
+          </div>
+
+          <!-- App Nav Bar -->
+          <div class="app-banner rx-banner">
+            <div class="app-title-group">
+              <span>🔊</span>
+              <strong>iTantra RX</strong>
+            </div>
+            <div class="badge-offline-container">
+              <span class="badge-offline">OFFLINE TTS</span>
+              <span class="tooltip-icon">ⓘ
+                <span class="tooltip-bubble">Simulates the local neural VITS vocoder running offline on-device, speaking decoded Indian language text aloud.</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Phone Content -->
+          <div class="phone-scroll-content">
+            <div class="rx-status-banner">
+              <span class="pulse-dot"></span>
+              <span>LISTENING ON BLE CHANNEL 37 (BROADCAST)</span>
+            </div>
+
+            <!-- Ingress Hex Inspector -->
+            <div class="rx-packet-inspector">
+              <div class="rx-packet-hdr">
+                <span class="input-sublabel">RAW FRAME INGRESS (HEX INSPECTOR):</span>
+                <span class="crc-badge" id="rxCrcBadge">CRC-16: VALID</span>
+              </div>
+              <div class="hex-dump-box" id="rxHexDump">
+                00 00 00 00  [STANDBY - AWAITING CARRIER SIGNAL]
+              </div>
+            </div>
+
+            <!-- Decoded Message Box -->
+            <div class="rx-decoded-card">
+              <div class="rx-decoded-hdr">
+                <span class="input-sublabel">DECODED MESSAGE TEXT:</span>
+                <span class="lang-tag" id="rxLangTag">TELUGU (te-IN)</span>
+              </div>
+              <div class="rx-text-body" id="rxDecodedText">
+                స్పీకర్ సిద్ధంగా ఉంది. సందేశం కోసం వేచి చూస్తోంది... (Standing by for incoming voice transmission)
+              </div>
+            </div>
+
+            <!-- TTS Oscilloscope -->
+            <div class="scope-card">
+              <div class="scope-header">
+                <span>RECONSTRUCTED SPEECH AUDIO (TTS OUTPUT)</span>
+                <span class="scope-rec-indicator" id="rxSpeakerIndicator">SPEAKER IDLE</span>
+              </div>
+              <canvas id="rxScopeCanvas" class="scope-canvas" width="320" height="44"></canvas>
+            </div>
+
+            <!-- Receiver Transcript History -->
+            <div class="chat-feed-box" id="rxChatLog">
+              <div class="chat-bubble bubble-in">
+                <div class="chat-text">స్పీకర్ సిద్ధంగా ఉంది. రేడియో లింక్ కనెక్ట్ అయింది.</div>
+                <div class="chat-meta">
+                  <span>VITS Vocoder Ready</span>
+                  <span>Standby</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audio Playback Action Bar -->
+          <div class="ptt-dock">
+            <button class="rx-replay-button" id="replayLastAudioBtn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>REPLAY LAST SPOKEN MESSAGE</span>
+            </button>
+            <div class="ptt-hint">Auto-speaks on reception with zero cloud dependencies.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- =========================================================================
+       PRESENTATION SLIDE DECK MODAL (Hidden by default)
+       ========================================================================= -->
+  <section class="deck-modal-view" id="deckSection" style="display: none;">
+    <div class="deck-container">
+      <div class="slide-card">
+        <div class="slide-badge-row">
+          <span class="slide-badge" id="deckSlideBadge">Slide 01 // Vision & Problem</span>
+          <button class="close-deck-btn" id="closeDeckBtn">✕ Return to Live Transceiver</button>
+        </div>
+        <h2 class="slide-heading" id="deckSlideTitle">iTantra: Offline Low-Bitrate Voice Transceiver</h2>
+        <div class="slide-body-text" id="deckSlideContent">Loading content...</div>
+        <div class="slide-bullet-list" id="deckSlidePoints"></div>
+      </div>
+
+      <div class="slide-nav-bar">
+        <button class="slide-nav-btn" id="deckPrevBtn">← Previous Slide</button>
+        <span class="slide-counter-label" id="deckSlideCounter">Slide 1 of 5</span>
+        <button class="slide-nav-btn" id="deckNextBtn">Next Slide →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Core Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
